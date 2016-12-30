@@ -30,6 +30,7 @@ SUBDIRS= 					\
 	lua 					\
 	lwip 					\
 	coap 					\
+	lwm2m 					\
 	mqtt 					\
 	task 					\
 	u8glib 					\
