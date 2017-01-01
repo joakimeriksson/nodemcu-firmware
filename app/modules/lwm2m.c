@@ -19,6 +19,8 @@
 #undef NODE_DBG
 #define NODE_DBG dbg_printf
 
+/* The init function from the lwm2m app */
+void lwm2m_app_init(void);
 
 typedef struct llwm2m_userdata
 {
@@ -271,6 +273,7 @@ static int luaopen_lwm2m( lua_State *L )
 {
   //  endpoint_setup();
   luaL_rometatable(L, "lwm2m_client", (void *)lwm2m_obj_map);  // create metatable for lwm2m_client
+  lwm2m_app_init();
   return 0;
 }
 

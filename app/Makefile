@@ -81,6 +81,7 @@ COMPONENTS_eagle.app.v6 = 			\
 	lua/liblua.a 				\
 	lwip/liblwip.a 				\
 	coap/coap.a 				\
+	lwm2m/liblwm2m.a 			\
 	mqtt/mqtt.a 				\
 	u8glib/u8glib.a 			\
 	ucglib/ucglib.a 			\

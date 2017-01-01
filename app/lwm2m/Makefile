@@ -12,7 +12,10 @@
 #     a generated lib/image xxx.a ()
 #
 ifndef PDIR
-GEN_LIBS = lwm2m.a
+UP_EXTRACT_DIR = ..
+GEN_LIBS = liblwm2m.a
+COMPONENTS_liblwm2m = sys/liblwm2msys.a                   \					    lib/liblwm2mlib.a                   \					  er-coap/libercoap.a
+
 endif
 
 #############################################################
