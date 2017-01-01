@@ -39,6 +39,7 @@
 #define CONTIKI_CONF_H_
 
 #include <stdint.h>
+#include "node-endpoint.h"
 
 #define CC_CONF_REGISTER_ARGS 0
 #define CC_CONF_FUNCTION_POINTER_ARGS 0
@@ -62,12 +63,6 @@
 #endif
 
 #define COAP_ENDPOINT_CUSTOM 1
-
-/* Need to define the coap-endpoint - where should we do that? */
-typedef struct {
-  int port;
-} coap_endpoint_t;
-
 #define REST_MAX_CHUNK_SIZE           256
 
 #endif /* CONTIKI_CONF_H_ */

@@ -12,6 +12,10 @@
 #include "lwip/ip_addr.h"
 #include "espconn.h"
 #include "driver/uart.h"
+#include "node-endpoint.h"
+
+static os_timer_t tick_timer;
+long ticks;
 
 #define MAX_MESSAGE_SIZE 1200
 
@@ -19,7 +23,32 @@
 #undef NODE_DBG
 #define NODE_DBG dbg_printf
 
+/* Needs to be defined here as contiki code use stdint and here c_types */
+int ntimer_run(void);
+void coap_endpoint_copy(coap_endpoint_t *destination,
+                        const coap_endpoint_t *from);
+int coap_endpoint_cmp(const coap_endpoint_t *e1, const coap_endpoint_t *e2);
+void coap_endpoint_print(const coap_endpoint_t *ep);
+int coap_endpoint_parse(const char *text, size_t size, coap_endpoint_t *ep);
+
+
+/* Timer tick for ntimer */
+static void ntimer_tick(void *arg)
+{ 
+  int i;
+  for(i = 0; i < 5 && ntimer_run(); i++);
+
+  ticks++;
+  if(ticks % 50 == 0) {
+    NODE_DBG("ntimer tick %d\n", ticks);
+  }
+  
+}
+
 /* The init function from the lwm2m app */
+
+/* Need to move all endpoint code here... */
+
 void lwm2m_app_init(void);
 
 typedef struct llwm2m_userdata
@@ -28,10 +57,103 @@ typedef struct llwm2m_userdata
   int self_ref;
 } llwm2m_userdata;
 
+#define printf(...) ets_printf( __VA_ARGS__ )
+/*------------------------------------------------------------------------*/
+/* Functions implementing CoAP Endpoint
+/*------------------------------------------------------------------------*/
+#define BUFSIZE 1280
+
+typedef union {
+  uint32_t u32[(BUFSIZE + 3) / 4];
+  uint8_t u8[BUFSIZE];
+} coap_buf_t;
+
+static coap_endpoint_t last_source;
+static coap_buf_t coap_aligned_buf;
+static uint16_t coap_buf_len;
+
+void
+coap_transport_init(void)
+{
+  /* Maybe this is for the module?? - test of printf! */
+  printf("CoAP transport init!\n");
+}
+
+/*------------------------------------------------------------------------*/
+static const coap_endpoint_t *
+coap_src_endpoint(void)
+{
+  return &last_source;
+}
+
+/*------------------------------------------------------------------------*/
+
+int
+coap_endpoint_cmp(const coap_endpoint_t *e1, const coap_endpoint_t *e2)
+{
+  return memcmp(e1, e2, sizeof(coap_endpoint_t)) == 0;
+}
+
+/*------------------------------------------------------------------------*/
+
+void
+coap_endpoint_copy(coap_endpoint_t *destination, const coap_endpoint_t *from)
+{
+  memcpy(destination, from, sizeof(coap_endpoint_t));
+}
+
+/*------------------------------------------------------------------------*/
+
+void
+coap_endpoint_print(const coap_endpoint_t *ep)
+{
+  ip_addr_t *ipaddr;
+  ipaddr = (ip_addr_t *)&ep->ipaddr;
+  printf("%d.%d.%d.%d:%u",
+	 ip4_addr1(ipaddr),
+	 ip4_addr2(ipaddr),
+	 ip4_addr3(ipaddr),
+	 ip4_addr4(ipaddr),
+	 ntohs(ep->port));
+}
+
+/*------------------------------------------------------------------------*/
+/* Used for parsing URI:s */
+int
+coap_endpoint_parse(const char *text, size_t size, coap_endpoint_t *ep)
+{
+  return 0;
+}
+
+/*------------------------------------------------------------------------*/
+
+uint8_t *
+coap_databuf(void)
+{
+  return coap_aligned_buf.u8;
+}
+
+/*------------------------------------------------------------------------*/
+
+uint16_t
+coap_datalen()
+{
+  return coap_buf_len;
+}
+
+/*------------------------------------------------------------------------*/
+
+void
+coap_send_message(const coap_endpoint_t *ep, const uint8_t *data, uint16_t len)
+{
+  
+}
+
+/*------------------------------------------------------------------------*/
 
 static void data_received(void *arg, char *pdata, unsigned short len)
 {
-  NODE_DBG("data_received is called.\n");
+  NODE_DBG("data_received is called. %d bytes.\n", len);
   struct espconn *pesp_conn = arg;
   llwm2m_userdata *cud = (llwm2m_userdata *)pesp_conn->reverse;
 
@@ -274,6 +396,11 @@ static int luaopen_lwm2m( lua_State *L )
   //  endpoint_setup();
   luaL_rometatable(L, "lwm2m_client", (void *)lwm2m_obj_map);  // create metatable for lwm2m_client
   lwm2m_app_init();
+
+  /* set up a ntimer tick timer that tick each 100 ms */
+  os_timer_setfn(&tick_timer, (os_timer_func_t *)ntimer_tick, NULL);
+  os_timer_arm(&tick_timer, 100, 1);
+  
   return 0;
 }
 
