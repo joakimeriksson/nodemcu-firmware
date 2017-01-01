@@ -12,10 +12,7 @@
 #     a generated lib/image xxx.a ()
 #
 ifndef PDIR
-UP_EXTRACT_DIR = ..
-GEN_LIBS = liblwm2m.a
-COMPONENTS_liblwm2m = sys/liblwm2msys.a                   \					    lib/liblwm2mlib.a                   \					  er-coap/libercoap.a                 \                                         oma-lwm2m/libomalwm2m.a             \					      ipso-objects/libipsoobjects.a
-
+GEN_LIBS = libipsoobjects.a
 endif
 
 #############################################################
@@ -41,8 +38,11 @@ endif
 
 INCLUDES := $(INCLUDES) -I $(PDIR)include
 INCLUDES += -I ./
-INCLUDES += -I ../libc
-INCLUDES += -I ../lua
+INCLUDES += -I ../
+INCLUDES += -I ../oma-lwm2m
+INCLUDES += -I ../er-coap
+INCLUDES += -I ../../libc
+INCLUDES += -I ../../lua
 PDIR := ../$(PDIR)
 sinclude $(PDIR)Makefile
 

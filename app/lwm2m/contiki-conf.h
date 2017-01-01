@@ -46,6 +46,8 @@
 #define CC_CONF_DOUBLE_HASH 0
 #define CC_CONF_NO_VA_ARGS  0
 
+#define UIP_CONF_IPV6_RPL 0
+
 #define NTIMER_CONF_DRIVER ntimer_nodemcu_driver
 
 #define LWM2M_ENGINE_CLIENT_ENDPOINT_NAME "lwm2m-ex"

@@ -39,10 +39,11 @@
 #include "er-coap/er-coap-engine.h"
 
 #define printf(...) ets_printf( __VA_ARGS__ )
+
 void
 coap_transport_init(void)
 {
-  /* Maybe this is for the module?? */
+  /* Maybe this is for the module?? - test of printf! */
   printf("CoAP transport init!\n");
 }
 
