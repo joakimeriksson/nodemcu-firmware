@@ -192,7 +192,7 @@ lwm2m_engine_get_rd_data(uint8_t *rd_data, int size) {
   int len, i, j;
 
   pos = 0;
-
+  PRINTF("rd-obj list: ");
   for(o = list_head(object_list); o != NULL; o = o->next) {
     len = snprintf((char *)&rd_data[pos], size - pos,
                    "%s<%d/%d>", pos > 0 ? "," : "",
@@ -202,13 +202,19 @@ lwm2m_engine_get_rd_data(uint8_t *rd_data, int size) {
     }
   }
 
+  PRINTF("rd-old obj array len before:%d\n", pos);
   for(i = 0; i < MAX_OBJECTS; i++) {
     if(objects[i] != NULL) {
+      len = 0;
+      PRINTF("%d (%d)\n", i, pos);
       for(j = 0; j < objects[i]->count; j++) {
         if(objects[i]->instances[j].flag & LWM2M_INSTANCE_FLAG_USED) {
-          len = snprintf((char *)&rd_data[pos], size - pos,
-                         "%s<%d/%d>", pos > 0 ? "," : "",
-                         objects[i]->id, objects[i]->instances[j].id);
+          PRINTF("%s<%d/%d>", pos > 0 ? "," : "",
+		 objects[i]->id, objects[i]->instances[j].id);
+          /* len = snprintf((char *)&rd_data[pos], size - pos, */
+          /*                "%s<%d/%d>", pos > 0 ? "," : "", */
+          /*                objects[i]->id, objects[i]->instances[j].id); */
+	  len = snprintf(&rd_data[pos], size - pos, "<3/0>");
           if(len > 0 && len < size - pos) {
             pos += len;
           }
@@ -216,6 +222,7 @@ lwm2m_engine_get_rd_data(uint8_t *rd_data, int size) {
       }
     }
   }
+  PRINTF("\ntotal len:%d\n", pos);
   return pos;
 }
 /*---------------------------------------------------------------------------*/

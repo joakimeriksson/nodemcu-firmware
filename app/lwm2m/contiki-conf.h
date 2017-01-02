@@ -51,9 +51,9 @@
 
 #define NTIMER_CONF_DRIVER ntimer_nodemcu_driver
 
-#define LWM2M_ENGINE_CLIENT_ENDPOINT_NAME "lwm2m-ex"
+#define LWM2M_ENGINE_CLIENT_ENDPOINT_NAME "nodemcu-"
 #define LWM2M_DEVICE_MANUFACTURER "SICS, Swedish ICT AB"
-#define LWM2M_DEVICE_TYPE "lwm2m-example"
+#define LWM2M_DEVICE_TYPE "NodeMCU-lwm2m"
 #define LWM2M_DEVICE_MODEL_NUMBER "000"
 #define LWM2M_DEVICE_SERIAL_NO "1"
 #define LWM2M_DEVICE_FIRMWARE_VERSION "0.1"

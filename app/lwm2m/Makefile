@@ -43,6 +43,8 @@ INCLUDES := $(INCLUDES) -I $(PDIR)include
 INCLUDES += -I ./
 INCLUDES += -I ../libc
 INCLUDES += -I ../lua
+INCLUDES += -I er-coap
+INCLUDES += -I oma-lwm2m
 PDIR := ../$(PDIR)
 sinclude $(PDIR)Makefile
 

@@ -50,7 +50,7 @@ static uint64_t uptime(void)
 /*---------------------------------------------------------------------------*/
 static void update(void)
 {
-  uptime_msec = system_get_time();  
+  uptime_msec = system_get_time() / 1000;
 }
 /*---------------------------------------------------------------------------*/
 const ntimer_driver_t ntimer_nodemcu_driver = {

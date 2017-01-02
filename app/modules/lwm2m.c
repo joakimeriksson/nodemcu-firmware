@@ -30,19 +30,17 @@ void coap_endpoint_copy(coap_endpoint_t *destination,
 int coap_endpoint_cmp(const coap_endpoint_t *e1, const coap_endpoint_t *e2);
 void coap_endpoint_print(const coap_endpoint_t *ep);
 int coap_endpoint_parse(const char *text, size_t size, coap_endpoint_t *ep);
-
+int coap_receive(const coap_endpoint_t *src,
+                 uint8_t *payload, uint16_t payload_length);
+void lwm2m_rd_client_register_with_server(coap_endpoint_t *server);
+void lwm2m_rd_client_use_registration_server(int use);
 
 /* Timer tick for ntimer */
 static void ntimer_tick(void *arg)
 { 
   int i;
   for(i = 0; i < 5 && ntimer_run(); i++);
-
   ticks++;
-  if(ticks % 50 == 0) {
-    NODE_DBG("ntimer tick %d\n", ticks);
-  }
-  
 }
 
 /* The init function from the lwm2m app */
@@ -55,7 +53,8 @@ typedef struct llwm2m_userdata
 {
   struct espconn *pesp_conn;
   int self_ref;
-} llwm2m_userdata;
+} llwm2m_userdata_t;
+
 
 #define printf(...) ets_printf( __VA_ARGS__ )
 /*------------------------------------------------------------------------*/
@@ -68,9 +67,13 @@ typedef union {
   uint8_t u8[BUFSIZE];
 } coap_buf_t;
 
+/* Currently supports only one instance of lwm2m client */
+static llwm2m_userdata_t *conn; /* this has the connection also */
 static coap_endpoint_t last_source;
 static coap_buf_t coap_aligned_buf;
 static uint16_t coap_buf_len;
+
+static coap_endpoint_t reg_server;
 
 void
 coap_transport_init(void)
@@ -146,7 +149,13 @@ coap_datalen()
 void
 coap_send_message(const coap_endpoint_t *ep, const uint8_t *data, uint16_t len)
 {
-  
+  NODE_DBG("Send message: %d to %d.%d.%d.%d\n", len,
+	   ep->ipaddr[0], ep->ipaddr[1], ep->ipaddr[2], ep->ipaddr[3]);
+  if(conn != NULL) {
+    conn->pesp_conn->proto.udp->remote_port = ep->port;
+    os_memmove(conn->pesp_conn->proto.udp->remote_ip, ep->ipaddr, 4);
+    espconn_send(conn->pesp_conn, (unsigned char *)data, len);
+  }
 }
 
 /*------------------------------------------------------------------------*/
@@ -155,30 +164,23 @@ static void data_received(void *arg, char *pdata, unsigned short len)
 {
   NODE_DBG("data_received is called. %d bytes.\n", len);
   struct espconn *pesp_conn = arg;
-  llwm2m_userdata *cud = (llwm2m_userdata *)pesp_conn->reverse;
-
-  uint8_t buf[MAX_MESSAGE_SIZE+1] = {0}; // +1 for string '\0'
-  c_memset(buf, 0, sizeof(buf)); // wipe prev data
+  llwm2m_userdata_t *cud = (llwm2m_userdata_t *)pesp_conn->reverse;
 
   if (len > MAX_MESSAGE_SIZE) {
     NODE_DBG("Request Entity Too Large.\n"); // NOTE: should response 4.13 to client...
     return;
   }
-  // c_memcpy(buf, pdata, len);
 
   size_t rsplen = 0;//coap_server_respond(pdata, len, buf, MAX_MESSAGE_SIZE+1);
-
   // SDK 1.4.0 changed behaviour, for UDP server need to look up remote ip/port
   remot_info *pr = 0;
   if (espconn_get_connection_info(pesp_conn, &pr, 0) != ESPCONN_OK)
     return;
-  pesp_conn->proto.udp->remote_port = pr->remote_port;
-  os_memmove(pesp_conn->proto.udp->remote_ip, pr->remote_ip, 4);
-  // The remot_info apparently should *not* be os_free()d, fyi
 
-  espconn_sent(pesp_conn, (unsigned char *)buf, rsplen);
-
-  // c_memset(buf, 0, sizeof(buf));
+  /* update last source - probably this should be a local var */
+  last_source.port = pr->remote_port;
+  os_memmove(last_source.ipaddr, pr->remote_ip, 4);
+  coap_receive(&last_source, pdata, len);
 }
 
 static void data_sent(void *arg)
@@ -191,12 +193,12 @@ static void data_sent(void *arg)
 static int lwm2m_create( lua_State* L, const char* mt )
 {
   struct espconn *pesp_conn = NULL;
-  llwm2m_userdata *cud;
+  llwm2m_userdata_t *cud;
   unsigned type;
   int stack = 1;
 
   // create a object
-  cud = (llwm2m_userdata *)lua_newuserdata(L, sizeof(llwm2m_userdata));
+  cud = (llwm2m_userdata_t *)lua_newuserdata(L, sizeof(llwm2m_userdata_t));
   // pre-initialize it, in case of errors
   cud->self_ref = LUA_NOREF;
   cud->pesp_conn = NULL;
@@ -227,6 +229,9 @@ static int lwm2m_create( lua_State* L, const char* mt )
 
   pesp_conn->reverse = cud;
 
+  /* UGLY hack to get the user data into single static (last) for send */
+  conn = cud;
+
   NODE_DBG("lwm2m_create is called.\n");
   return 1;  
 }
@@ -235,9 +240,9 @@ static int lwm2m_create( lua_State* L, const char* mt )
 static int lwm2m_delete_c( lua_State* L, const char* mt )
 {
   struct espconn *pesp_conn = NULL;
-  llwm2m_userdata *cud;
+  llwm2m_userdata_t *cud;
 
-  cud = (llwm2m_userdata *)luaL_checkudata(L, 1, mt);
+  cud = (llwm2m_userdata_t *)luaL_checkudata(L, 1, mt);
   luaL_argcheck(L, cud, 1, "Server/Client expected");
   if(cud==NULL){
     NODE_DBG("userdata is nil.\n");
@@ -268,12 +273,12 @@ static int lwm2m_delete_c( lua_State* L, const char* mt )
 static int lwm2m_listen_c( lua_State* L, const char* mt )
 {
   struct espconn *pesp_conn = NULL;
-  llwm2m_userdata *cud;
+  llwm2m_userdata_t *cud;
   unsigned port;
   size_t il;
   ip_addr_t ipaddr;
 
-  cud = (llwm2m_userdata *)luaL_checkudata(L, 1, mt);
+  cud = (llwm2m_userdata_t *)luaL_checkudata(L, 1, mt);
   luaL_argcheck(L, cud, 1, "Server/Client expected");
   if(cud==NULL){
     NODE_DBG("userdata is nil.\n");
@@ -313,13 +318,59 @@ static int lwm2m_listen_c( lua_State* L, const char* mt )
   return 0;  
 }
 
+// Lua: regiester( port, ip )
+static int lwm2m_register_c( lua_State* L, const char* mt )
+{
+  struct espconn *pesp_conn = NULL;
+  llwm2m_userdata_t *cud;
+  unsigned port;
+  size_t il;
+  ip_addr_t ipaddr;
+
+  cud = (llwm2m_userdata_t *)luaL_checkudata(L, 1, mt);
+  luaL_argcheck(L, cud, 1, "Server/Client expected");
+  if(cud==NULL){
+    NODE_DBG("userdata is nil.\n");
+    return 0;
+  }
+
+  port = luaL_checkinteger( L, 2 );
+  reg_server.port = port;
+  NODE_DBG("LWM2M Server UDP port is set: %d.\n", port);
+
+  if( lua_isstring(L,3) )   // deal with the ip string
+  {
+    const char *ip = luaL_checklstring( L, 3, &il );
+    if (ip == NULL)
+    {
+      ip = "0.0.0.0";
+    }
+    ipaddr.addr = ipaddr_addr(ip);
+    c_memcpy(reg_server.ipaddr, &ipaddr.addr, 4);
+    NODE_DBG("LWM2M Server UDP ip is set: ");
+    NODE_DBG(IPSTR, IP2STR(&ipaddr.addr));
+    NODE_DBG("\n");
+  }
+
+  if(LUA_NOREF==cud->self_ref){
+    lua_pushvalue(L, 1);  // copy to the top of stack
+    cud->self_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+  }
+
+  lwm2m_rd_client_use_registration_server(1);
+  lwm2m_rd_client_register_with_server(&reg_server);
+
+  return 0;  
+}
+
+
 // Lua: client:close()
 static int lwm2m_close_c( lua_State* L, const char* mt )
 {
   struct espconn *pesp_conn = NULL;
-  llwm2m_userdata *cud;
+  llwm2m_userdata_t *cud;
 
-  cud = (llwm2m_userdata *)luaL_checkudata(L, 1, mt);
+  cud = (llwm2m_userdata_t *)luaL_checkudata(L, 1, mt);
   luaL_argcheck(L, cud, 1, "Server/Client expected");
   if(cud==NULL){
     NODE_DBG("userdata is nil.\n");
@@ -353,6 +404,12 @@ static int lwm2m_listen( lua_State* L )
   return lwm2m_listen_c(L, mt);
 }
 
+static int lwm2m_register( lua_State* L )
+{
+  const char *mt = "lwm2m_client";
+  return lwm2m_register_c(L, mt);
+}
+
 static int lwm2m_close( lua_State* L )
 {
   const char *mt = "lwm2m_client";
@@ -376,6 +433,7 @@ static int lwm2m_delete( lua_State* L )
 // Module function map
 static const LUA_REG_TYPE lwm2m_obj_map[] = {
   { LSTRKEY( "listen" ),  LFUNCVAL( lwm2m_listen ) },
+  { LSTRKEY( "register" ),  LFUNCVAL( lwm2m_register ) },
   { LSTRKEY( "close" ),   LFUNCVAL( lwm2m_close ) },
   //  { LSTRKEY( "var" ),     LFUNCVAL( coap_server_var ) },
   // { LSTRKEY( "func" ),    LFUNCVAL( coap_server_func ) },

@@ -62,7 +62,7 @@
 #include "net/rpl/rpl.h"
 #endif /* UIP_CONF_IPV6_RPL */
 
-#define DEBUG 0
+#define DEBUG 1
 #if DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
@@ -234,10 +234,10 @@ periodic_process(ntimer_t *timer)
   uint64_t now;
 
   /* reschedule the eimter */
-  ntimer_reset(&rd_timer, 500);
+  ntimer_reset(&rd_timer, 2000);
   now = ntimer_uptime();
 
-  PRINTF("RD Client - state: %d\n", rd_state);
+  PRINTF("RD Client - state: %d %d\n", rd_state, now);
 
   switch(rd_state) {
   case INIT:
@@ -337,13 +337,16 @@ periodic_process(ntimer_t *timer)
       int len;
 
       /* prepare request, TID is set by COAP_BLOCKING_REQUEST() */
+      PRINTF("Preparing request.\n");
       coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
       coap_set_header_uri_path(request, "/rd");
       coap_set_header_uri_query(request, endpoint);
 
+      PRINTF("Generating RD data.\n");
       /* generate the rd data */
       len = lwm2m_engine_get_rd_data(rd_data, sizeof(rd_data));
 
+      PRINTF("Set payload - rd data len:%d\n", len);
       coap_set_payload(request, rd_data, len);
 
       PRINTF("Registering with [");
@@ -375,5 +378,5 @@ lwm2m_rd_client_init(char *ep)
   rd_state = INIT;
   /* Example using network timer */
   ntimer_set_callback(&rd_timer, periodic_process);
-  ntimer_set(&rd_timer, 500); /* call the RD client 2 times per second */
+  ntimer_set(&rd_timer, 2000); /* call the RD client 2 times per second */
 }

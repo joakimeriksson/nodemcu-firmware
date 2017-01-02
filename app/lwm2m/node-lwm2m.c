@@ -36,20 +36,18 @@
 
 #include "contiki-conf.h"
 #include "sys/ntimer.h"
-#include "er-coap/er-coap-engine.h"
+#include <string.h>
+#include <stdio.h>
+#include "oma-lwm2m/lwm2m-engine.h"
 
-#define printf(...) ets_printf( __VA_ARGS__ )
+void custom_device_object_init(void);
 
-void
-coap_transport_init(void)
-{
-  /* Maybe this is for the module?? - test of printf! */
-  printf("CoAP transport init!\n");
-}
+/*------------------------------------------------------------------------*/
 
 void lwm2m_app_init(void)
 {
   /* Initializing drivers, etc */
   NTIMER_DRIVER.init();
-  coap_init_engine();
+  lwm2m_engine_init();
+  custom_device_object_init();
 }
