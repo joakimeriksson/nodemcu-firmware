@@ -42,7 +42,7 @@
 /* For node-mcu code... */
 #ifndef snprintf
 #define snprintf(...) ets_vsnprintf( __VA_ARGS__ )
-#define printf(...) ets_printf( __VA_ARGS__ )
+#define printf(...) dbg_printf( __VA_ARGS__ )
 #endif
 
 #include <stddef.h> /* for size_t */

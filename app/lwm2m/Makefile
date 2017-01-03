@@ -45,6 +45,7 @@ INCLUDES += -I ../libc
 INCLUDES += -I ../lua
 INCLUDES += -I er-coap
 INCLUDES += -I oma-lwm2m
+INCLUDES += -I ipso-objects
 PDIR := ../$(PDIR)
 sinclude $(PDIR)Makefile
 

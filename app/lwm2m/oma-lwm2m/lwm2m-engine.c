@@ -64,8 +64,12 @@
 #define DEBUG 1
 #if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
+#define PRINTS(l,s,f) do { int i;					\
+    for(i = 0; i < l; i++) printf(f, s[i]); \
+    } while(0)
 #else
 #define PRINTF(...)
+#define PRINTS(l,s,f)
 #endif
 
 #ifndef LWM2M_ENGINE_CLIENT_ENDPOINT_PREFIX
@@ -106,6 +110,39 @@ LIST(object_list);
 static const lwm2m_object_t *objects[MAX_OBJECTS];
 static char endpoint[32];
 /*---------------------------------------------------------------------------*/
+int
+u16toa(uint8_t *buf, uint16_t v)
+{
+  int pos = 0;
+  int div = 10000;
+  /* Max size = 5 */
+  while(div > 0) {
+    buf[pos] = '0' + (v / div) % 10;
+    /* if first non-zero found or we have found that before */
+    if(buf[pos] > '0' || pos > 0 || div == 1) pos++;
+    div = div / 10;
+  }
+  return pos;
+}
+
+int
+append_reg_tag(uint8_t *rd_data, int oid, int iid, int rid)
+{
+  int pos;
+  rd_data[pos++] = '<';
+  pos += u16toa(&rd_data[pos], oid);
+  if(iid > -1) {
+    rd_data[pos++] = '/';
+    pos += u16toa(&rd_data[pos], iid);
+    if(rid > -1) {
+      rd_data[pos++] = '/';
+      pos += u16toa(&rd_data[pos], rid);
+    }
+  }
+  rd_data[pos++] = '>';
+  return pos;
+}
+/*---------------------------------------------------------------------------*/
 static inline const char *
 get_method_as_string(rest_resource_flags_t method)
 {
@@ -121,39 +158,18 @@ get_method_as_string(rest_resource_flags_t method)
     return "UNKNOWN";
   }
 }
-/*---------------------------------------------------------------------------*/
-static int
-parse_next(const char **path, int *path_len, uint16_t *value)
-{
-  char c;
-  *value = 0;
-  /* printf("parse_next: %p %d\n", *path, *path_len); */
-  if(*path_len == 0) {
-    return 0;
-  }
-  while(*path_len > 0) {
-    c = **path;
-    (*path)++;
-    *path_len = *path_len - 1;
-    if(c >= '0' && c <= '9') {
-      *value = *value * 10 + (c - '0');
-    } else if(c == '/') {
-      return 1;
-    } else {
-      /* error */
-      return -4;
-    }
-  }
-  return 1;
-}
-/*---------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------*/
 static int
 lwm2m_engine_parse_context(const char *path, int path_len,
                            coap_packet_t *request, coap_packet_t *response,
                            uint8_t *outbuf, size_t outsize,
                            lwm2m_context_t *context)
 {
+  int len;
   int ret;
+  int pos;
+  uint16_t val;
+  char c;
   if(context == NULL || path == NULL) {
     return 0;
   }
@@ -173,15 +189,38 @@ lwm2m_engine_parse_context(const char *path, int path_len,
   context->writer = &oma_tlv_writer;
 
   /* get object id */
+  PRINTF("Parse PATH:");
+  PRINTS(path_len, path, "%c");
+  PRINTF("\n");
+
   ret = 0;
-  ret += parse_next(&path, &path_len, &context->object_id);
-  ret += parse_next(&path, &path_len, &context->object_instance_id);
-  ret += parse_next(&path, &path_len, &context->resource_id);
+  pos = 0;
+  do {
+    val = 0;
+    /* we should get a value first - consume all numbers */
+    while(pos < path_len && (c = path[pos]) >= '0' && c <= '9') {
+      val = val * 10 + (c - '0');
+      pos++;
+    }
+    /* Slash will mote thing forward - and the end will be when pos == pl */
+    if(c == '/' || pos == path_len) {
+      if(ret == 0) context->object_id = val;
+      if(ret == 1) context->object_instance_id = val;
+      if(ret == 2) context->resource_id = val;
+      ret++;
+      pos++;
+    } else {
+      PRINTF("Error: illegal char '%c' at pos:%d\n", c, pos);
+      return -1;
+    }
+  } while(pos < path_len);
+  
+  //  ret += parse_next(&path[pos], path_len, &context->object_instance_id);
+  //  ret += parse_next(&path[pos], path_len, &context->resource_id);
 
   if(ret > 0) {
-    context->level = ret & 0xff;
+    context->level = ret;
   }
-
   return ret;
 }
 /*---------------------------------------------------------------------------*/
@@ -192,37 +231,33 @@ lwm2m_engine_get_rd_data(uint8_t *rd_data, int size) {
   int len, i, j;
 
   pos = 0;
-  PRINTF("rd-obj list: ");
   for(o = list_head(object_list); o != NULL; o = o->next) {
-    len = snprintf((char *)&rd_data[pos], size - pos,
-                   "%s<%d/%d>", pos > 0 ? "," : "",
-                   o->object_id, o->instance_id);
+    if(pos > 0) {
+      rd_data[pos++] = ',';
+    }
+    len = append_reg_tag(&rd_data[pos], o->object_id, o->instance_id, -1);
     if(len > 0 && len < size - pos) {
       pos += len;
     }
   }
 
-  PRINTF("rd-old obj array len before:%d\n", pos);
   for(i = 0; i < MAX_OBJECTS; i++) {
     if(objects[i] != NULL) {
-      len = 0;
-      PRINTF("%d (%d)\n", i, pos);
       for(j = 0; j < objects[i]->count; j++) {
         if(objects[i]->instances[j].flag & LWM2M_INSTANCE_FLAG_USED) {
-          PRINTF("%s<%d/%d>", pos > 0 ? "," : "",
-		 objects[i]->id, objects[i]->instances[j].id);
-          /* len = snprintf((char *)&rd_data[pos], size - pos, */
-          /*                "%s<%d/%d>", pos > 0 ? "," : "", */
-          /*                objects[i]->id, objects[i]->instances[j].id); */
-	  len = snprintf(&rd_data[pos], size - pos, "<3/0>");
-          if(len > 0 && len < size - pos) {
-            pos += len;
-          }
+	  uint16_t oid = objects[i]->id;
+	  uint16_t iid = objects[i]->instances[j].id;
+	  if(size - pos > 6) { /* Should be better guess */
+	    if(pos > 0) {
+	      rd_data[pos++] = ',';
+	    }
+	    pos += append_reg_tag(&rd_data[pos], oid, iid, -1);
+	  }
         }
       }
     }
   }
-  PRINTF("\ntotal len:%d\n", pos);
+  rd_data[pos] = 0;
   return pos;
 }
 /*---------------------------------------------------------------------------*/
@@ -648,9 +683,10 @@ lwm2m_engine_handler(const lwm2m_object_t *object,
 
 #if DEBUG
   /* for debugging */
-  PRINTF("%s Called Path:%.*s Format:%d ID:%d bsize:%u\n",
-         get_method_as_string(method), len,
-         url, format, object->id, preferred_size);
+  PRINTF("%s Called Path:%u/%u/%u Format:%d ID:%d bsize:%u\n",
+         get_method_as_string(method), context.object_id,
+         context.object_instance_id, context.resource_id,
+	 format, object->id, preferred_size);
   if(format == LWM2M_TEXT_PLAIN) {
     /* a string */
     const uint8_t *data;
@@ -799,7 +835,9 @@ lwm2m_engine_handler(const lwm2m_object_t *object,
         value = lwm2m_object_get_resource_string(resource, &context);
         if(value != NULL) {
           uint16_t len = lwm2m_object_get_resource_strlen(resource, &context);
-          PRINTF("Get string value: %.*s\n", (int)len, (char *)value);
+          PRINTF("Get string value: ");
+	  PRINTS(len, value, "%c");
+	  PRINTF("\n");
           content_len = context.writer->write_string(&context, buffer,
             preferred_size, (const char *)value, len);
         }
@@ -1068,19 +1106,20 @@ lwm2m_handler_callback(coap_packet_t *request, coap_packet_t *response,
   depth = lwm2m_engine_parse_context(url, url_len, request, response,
                                      buffer, buffer_size, &context);
 
-
+  PRINTF("URL:");
+  PRINTS(url_len, url, "%c");
+  PRINTF(" CTX:%u/%u/%u\n", context.object_id, context.object_instance_id,
+	 context.resource_id);
   /* Get format and accept */
   if(!REST.get_header_content_type(request, &format)) {
-    PRINTF("lwm2m[%.*s]: No format given. Assume text plain...\n",
-           url_len, url);
+    PRINTF("lwm2m: No format given. Assume text plain...\n");
     format = LWM2M_TEXT_PLAIN;
   } else if(format == TEXT_PLAIN) {
     /* CoAP content format text plain - assume LWM2M text plain */
     format = LWM2M_TEXT_PLAIN;
   }
   if(!REST.get_header_accept(request, &accept)) {
-    PRINTF("lwm2m[%.*s]: No Accept header, using same as Content-format...\n",
-           url_len, url);
+    PRINTF("lwm2m: No Accept header, using same as Content-format...\n");
     accept = format;
   }
 
@@ -1100,8 +1139,8 @@ lwm2m_handler_callback(coap_packet_t *request, coap_packet_t *response,
     return 0;
   }
 
-  PRINTF("lwm2m[%.*s] Context: %u/%u/%u  found: %d\n",
-         url_len, url, context.object_id,
+  PRINTF("lwm2m Context: %u/%u/%u  found: %d\n",
+         context.object_id,
          context.object_instance_id, context.resource_id, depth);
   /*
    * Select reader and writer based on provided Content type and
@@ -1141,8 +1180,8 @@ lwm2m_handler_callback(coap_packet_t *request, coap_packet_t *response,
 
 #if DEBUG
   /* for debugging */
-  PRINTF("lwm2m[%.*s] %s Format:%d ID:%d bsize:%u\n",
-         url_len, url, get_method_as_string(REST.get_method_type(request)),
+  PRINTF("lwm2m %s Format:%d ID:%d bsize:%u\n",
+         get_method_as_string(REST.get_method_type(request)),
          format, context.object_id, buffer_size);
   if(format == LWM2M_TEXT_PLAIN) {
     /* a string */
@@ -1169,6 +1208,7 @@ lwm2m_handler_callback(coap_packet_t *request, coap_packet_t *response,
     /* Assume only one disco at a time... */
     success = perform_discovery(instance, &context);
   } else {
+    PRINTF("LWM2M: Doing callback...\n");
     /* If not discovery or create - this is a regular OP - do the callback */
     success = instance->callback(instance, &context);
   }
@@ -1181,8 +1221,7 @@ lwm2m_handler_callback(coap_packet_t *request, coap_packet_t *response,
     }
 
     if(context.outlen > 0) {
-      PRINTF("lwm2m[%.*s]: replying with %u bytes\n", url_len, url,
-             context.outlen);
+      PRINTF("lwm2m: replying with %u bytes\n", context.outlen);
       REST.set_response_payload(response, context.outbuf, context.outlen);
       REST.set_header_content_type(response, context.content_type);
 

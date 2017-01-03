@@ -32,7 +32,7 @@
 #include "sys/ntimer.h"
 
 static uint64_t uptime_msec = 0;
-static uint64_t last_msec;
+static uint64_t last_system_time;
 
 static void update(void);
 
@@ -50,7 +50,9 @@ static uint64_t uptime(void)
 /*---------------------------------------------------------------------------*/
 static void update(void)
 {
-  uptime_msec = system_get_time() / 1000;
+  /* Add the new ticks to the counter */
+  uptime_msec += (system_get_time() - last_system_time) / 1000;
+  last_system_time = system_get_time();
 }
 /*---------------------------------------------------------------------------*/
 const ntimer_driver_t ntimer_nodemcu_driver = {

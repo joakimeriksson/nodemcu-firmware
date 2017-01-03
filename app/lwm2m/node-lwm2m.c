@@ -41,6 +41,7 @@
 #include "oma-lwm2m/lwm2m-engine.h"
 
 void custom_device_object_init(void);
+void ipso_sensor_temp_init(void);
 
 /*------------------------------------------------------------------------*/
 
@@ -50,4 +51,5 @@ void lwm2m_app_init(void)
   NTIMER_DRIVER.init();
   lwm2m_engine_init();
   custom_device_object_init();
+  ipso_sensor_temp_init();
 }
