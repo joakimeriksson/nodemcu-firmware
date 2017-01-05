@@ -41,7 +41,6 @@
 
 /* For node-mcu code... */
 #ifndef snprintf
-#define snprintf(...) ets_vsnprintf( __VA_ARGS__ )
 #define printf(...) dbg_printf( __VA_ARGS__ )
 #endif
 
@@ -51,6 +50,7 @@
 #include "er-coap-transport.h"
 
 #include "rest-engine.h"
+#include "lib/mini-snprintf.h"
 
 #define COAP_MAX_PACKET_SIZE  (COAP_MAX_HEADER_SIZE + REST_MAX_CHUNK_SIZE)
 

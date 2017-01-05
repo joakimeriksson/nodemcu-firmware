@@ -55,6 +55,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
+#include "lib/mini-snprintf.h"
 
 #if UIP_CONF_IPV6_RPL
 #include "net/rpl/rpl.h"
@@ -509,11 +510,15 @@ write_json_data(const lwm2m_context_t *context,
       value = lwm2m_object_get_resource_string(resource, context);
       slen = lwm2m_object_get_resource_strlen(resource, context);
       if(value != NULL) {
-        PRINTF("%s{\"n\":\"%u\",\"sv\":\"%.*s\"}", s,
-               resource->id, slen, value);
+        PRINTF("%s{\"n\":\"%u\",\"sv\":\"", s, resource->id);
+	PRINTS(slen, value, "%c");
+	PRINTF("\"}", size, rdlen);
         len = snprintf(&buffer[rdlen], size - rdlen,
-                       "%s{\"n\":\"%u\",\"sv\":\"%.*s\"}", s,
-                       resource->id, slen, value);
+                       "%s{\"n\":\"%u\",\"sv\":\"", s, resource->id);
+	memcpy(&buffer[rdlen + len], value, slen);
+	len = len + slen;
+	memcpy(&buffer[rdlen + len], "\"}", 2);
+	len = len + 2;
       }
     } else if(lwm2m_object_is_resource_int(resource)) {
       int32_t value;
@@ -566,7 +571,7 @@ write_json_data(const lwm2m_context_t *context,
       PRINTF("#<truncated>\n");
       return -1;
     }
-    if(len > 0) {
+    if(rdlen > 0) {
       s = ",";
     }
   }
@@ -692,7 +697,9 @@ lwm2m_engine_handler(const lwm2m_object_t *object,
     const uint8_t *data;
     int plen = REST.get_request_payload(request, &data);
     if(plen > 0) {
-      PRINTF("Data: '%.*s'\n", plen, (char *)data);
+      PRINTF("Data: '");
+      PRINTS(plen, data, "%c");
+      PRINTF("'\n");
     }
   }
 #endif /* DEBUG */
@@ -754,9 +761,11 @@ lwm2m_engine_handler(const lwm2m_object_t *object,
           if(rsc != NULL) {
             /* write the value to the resource */
             if(lwm2m_object_is_resource_string(rsc)) {
-              PRINTF("  new string value for /%d/%d/%d = %.*s\n",
+              PRINTF("  new string value for /%d/%d/%d = ",
                      context.object_id, context.object_instance_id,
-                     context.resource_id, (int)tlv.length, tlv.value);
+                     context.resource_id);
+	      PRINTS((int)tlv.length, tlv.value, "%c");
+	      PRINTF("\n");
               lwm2m_object_set_resource_string(rsc, &context,
                                                tlv.length, tlv.value);
             } else if(lwm2m_object_is_resource_int(rsc)) {
@@ -810,7 +819,9 @@ lwm2m_engine_handler(const lwm2m_object_t *object,
             const uint8_t *data;
             int plen = REST.get_request_payload(request, &data);
             context.reader = &lwm2m_plain_text_reader;
-            PRINTF("PUT Callback with data: '%.*s'\n", plen, data);
+            PRINTF("PUT Callback with data: '");
+	    PRINTS(plen, data, "%c");
+	    PRINTF("'\n");
             /* no specific reader for plain text */
             content_len = resource->value.callback.write(&context, data, plen,
                                                     buffer, preferred_size);
@@ -877,7 +888,9 @@ lwm2m_engine_handler(const lwm2m_object_t *object,
         if(resource->value.callback.exec != NULL) {
           const uint8_t *data;
           int plen = REST.get_request_payload(request, &data);
-          PRINTF("Execute Callback with data: '%.*s'\n", plen, data);
+          PRINTF("Execute Callback with data: '");
+	  PRINTS(plen, data, "%c");
+	  PRINTF("'\n");
           content_len = resource->value.callback.exec(&context,
                                                  data, plen,
                                                  buffer, preferred_size);
@@ -948,8 +961,9 @@ lwm2m_engine_delete_handler(const lwm2m_object_t *object, void *request,
   lwm2m_context_t context;
 
   len = REST.get_url(request, &url);
-  PRINTF("*** DELETE URI:'%.*s' called... - responding with DELETED.\n",
-         len, url);
+  PRINTF("*** DELETE URI:'");
+  PRINTS(len, url, "%c");
+  PRINTF("' called... - responding with DELETED.\n");
   len = lwm2m_engine_parse_context(url, len, request, response,
                                    buffer, preferred_size,
                                    &context);
@@ -1188,7 +1202,9 @@ lwm2m_handler_callback(coap_packet_t *request, coap_packet_t *response,
     const uint8_t *data;
     int plen = REST.get_request_payload(request, &data);
     if(plen > 0) {
-      PRINTF("Data: '%.*s'\n", plen, (char *)data);
+      PRINTF("Data: '");
+      PRINTS(plen, data, "%c");
+      PRINTF("'\n");
     }
   }
 #endif /* DEBUG */
@@ -1227,12 +1243,12 @@ lwm2m_handler_callback(coap_packet_t *request, coap_packet_t *response,
 
       *offset = context.offset;
     } else {
-      PRINTF("lwm2m[%.*s]: no data in reply\n", url_len, url);
+      PRINTF("lwm2m: no data in reply\n", url_len, url);
     }
   } else {
     /* Failed to handle the request */
     REST.set_response_status(response, INTERNAL_SERVER_ERROR_5_00);
-    PRINTF("lwm2m[%.*s]: resource failed\n", url_len, url);
+    PRINTF("lwm2m: resource failed\n", url_len, url);
   }
   return 1;
 }

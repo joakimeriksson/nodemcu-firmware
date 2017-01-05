@@ -47,8 +47,12 @@
 #if DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
+#define PRINTS(l,s,f) do { int i;					\
+    for(i = 0; i < l; i++) printf(f, s[i]); \
+    } while(0)
 #else
 #define PRINTF(...)
+#define PRINTS(l,s,f)
 #endif
 
 /*---------------------------------------------------------------------------*/
@@ -170,8 +174,7 @@ coap_serialize_array_option(unsigned int number, unsigned int current_number,
 {
   size_t i = 0;
 
-  PRINTF("ARRAY type %u, len %zu, full [%.*s]\n", number, length,
-	 (int)length, array);
+  PRINTF("ARRAY type %u, len %zu, full.\n", number, length);
 
   if(split_char != '\0') {
     int j;
@@ -190,8 +193,8 @@ coap_serialize_array_option(unsigned int number, unsigned int current_number,
         memcpy(&buffer[i], part_start, temp_length);
         i += temp_length;
 
-        PRINTF("OPTION type %u, delta %u, len %zu, part [%.*s]\n", number,
-               number - current_number, i, (int)temp_length, part_start);
+        PRINTF("OPTION type %u, delta %u, len %zu, part\n", number,
+               number - current_number, i);
 
         ++j;                    /* skip the splitter */
         current_number = number;
@@ -548,8 +551,7 @@ coap_parse_message(coap_packet_t *coap_pkt, uint8_t *data, uint16_t data_len)
       coap_pkt->proxy_uri = (char *)current_option;
       coap_pkt->proxy_uri_len = option_length;
 #endif
-      PRINTF("Proxy-Uri NOT IMPLEMENTED [%.*s]\n", (int)coap_pkt->proxy_uri_len,
-             coap_pkt->proxy_uri);
+      PRINTF("Proxy-Uri NOT IMPLEMENTED\n");
       coap_error_message = "This is a constrained server (Contiki)";
       return PROXYING_NOT_SUPPORTED_5_05;
       break;
@@ -558,8 +560,7 @@ coap_parse_message(coap_packet_t *coap_pkt, uint8_t *data, uint16_t data_len)
       coap_pkt->proxy_scheme = (char *)current_option;
       coap_pkt->proxy_scheme_len = option_length;
 #endif
-      PRINTF("Proxy-Scheme NOT IMPLEMENTED [%.*s]\n",
-             (int)coap_pkt->proxy_scheme_len, coap_pkt->proxy_scheme);
+      PRINTF("Proxy-Scheme NOT IMPLEMENTED\n");
       coap_error_message = "This is a constrained server (Contiki)";
       return PROXYING_NOT_SUPPORTED_5_05;
       break;
@@ -567,8 +568,9 @@ coap_parse_message(coap_packet_t *coap_pkt, uint8_t *data, uint16_t data_len)
     case COAP_OPTION_URI_HOST:
       coap_pkt->uri_host = (char *)current_option;
       coap_pkt->uri_host_len = option_length;
-      PRINTF("Uri-Host [%.*s]\n", (int)coap_pkt->uri_host_len,
-	     coap_pkt->uri_host);
+      PRINTF("Uri-Host ");
+      PRINTS((int)coap_pkt->uri_host_len,coap_pkt->uri_host, "%c");
+      PRINTF("\n");
       break;
     case COAP_OPTION_URI_PORT:
       coap_pkt->uri_port = coap_parse_int_option(current_option,
@@ -580,15 +582,18 @@ coap_parse_message(coap_packet_t *coap_pkt, uint8_t *data, uint16_t data_len)
       coap_merge_multi_option((char **)&(coap_pkt->uri_path),
                               &(coap_pkt->uri_path_len), current_option,
                               option_length, '/');
-      PRINTF("Uri-Path [%.*s]\n", (int)coap_pkt->uri_path_len, coap_pkt->uri_path);
+      PRINTF("Uri-Path [");
+      PRINTS((int)coap_pkt->uri_path_len, coap_pkt->uri_path, "%c");
+      PRINTF("]\n");
       break;
     case COAP_OPTION_URI_QUERY:
       /* coap_merge_multi_option() operates in-place on the IPBUF, but final packet field should be const string -> cast to string */
       coap_merge_multi_option((char **)&(coap_pkt->uri_query),
                               &(coap_pkt->uri_query_len), current_option,
                               option_length, '&');
-      PRINTF("Uri-Query [%.*s]\n", (int)coap_pkt->uri_query_len,
-             coap_pkt->uri_query);
+      PRINTF("Uri-Query [");
+      PRINTS((int)coap_pkt->uri_query_len, coap_pkt->uri_query, "%c");
+      PRINTF("]\n");
       break;
 
     case COAP_OPTION_LOCATION_PATH:
@@ -596,16 +601,18 @@ coap_parse_message(coap_packet_t *coap_pkt, uint8_t *data, uint16_t data_len)
       coap_merge_multi_option((char **)&(coap_pkt->location_path),
                               &(coap_pkt->location_path_len), current_option,
                               option_length, '/');
-      PRINTF("Location-Path [%.*s]\n", (int)coap_pkt->location_path_len,
-             coap_pkt->location_path);
+      PRINTF("Location-Path [");
+      PRINTS((int)coap_pkt->location_path_len, coap_pkt->location_path, "%c");
+      PRINTF("]\n");
       break;
     case COAP_OPTION_LOCATION_QUERY:
       /* coap_merge_multi_option() operates in-place on the IPBUF, but final packet field should be const string -> cast to string */
       coap_merge_multi_option((char **)&(coap_pkt->location_query),
                               &(coap_pkt->location_query_len), current_option,
                               option_length, '&');
-      PRINTF("Location-Query [%.*s]\n", (int)coap_pkt->location_query_len,
-             coap_pkt->location_query);
+      PRINTF("Location-Query [");
+      PRINTS(coap_pkt->location_query_len, coap_pkt->location_query, "%c");
+      PRINTF("]\n");
       break;
 
     case COAP_OPTION_OBSERVE:

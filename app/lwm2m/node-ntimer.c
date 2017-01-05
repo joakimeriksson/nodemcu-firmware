@@ -32,7 +32,7 @@
 #include "sys/ntimer.h"
 
 static uint64_t uptime_msec = 0;
-static uint64_t last_system_time;
+static uint32_t last_system_time;
 
 static void update(void);
 

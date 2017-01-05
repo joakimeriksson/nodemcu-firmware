@@ -66,10 +66,14 @@
 #if DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
+#define PRINTS(l,s,f) do { int i;					\
+    for(i = 0; i < l; i++) printf(f, s[i]); \
+    } while(0)
 #define PRINT6ADDR(addr) PRINTF("[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7], ((uint8_t *)addr)[8], ((uint8_t *)addr)[9], ((uint8_t *)addr)[10], ((uint8_t *)addr)[11], ((uint8_t *)addr)[12], ((uint8_t *)addr)[13], ((uint8_t *)addr)[14], ((uint8_t *)addr)[15])
 #define PRINTLLADDR(lladdr) PRINTF("[%02x:%02x:%02x:%02x:%02x:%02x]", (lladdr)->addr[0], (lladdr)->addr[1], (lladdr)->addr[2], (lladdr)->addr[3], (lladdr)->addr[4], (lladdr)->addr[5])
 #else
 #define PRINTF(...)
+#define PRINTS(l,s,f)
 #define PRINT6ADDR(addr)
 #define PRINTLLADDR(addr)
 #endif
@@ -351,10 +355,9 @@ periodic_process(ntimer_t *timer)
 
       PRINTF("Registering with [");
       coap_endpoint_print(&server_endpoint);
-      PRINTF("] lwm2m endpoint '%s': '%.*s'\n",
-             endpoint, len, (char *) rd_data);
-      /* COAP_BLOCKING_REQUEST(&server_endpoint, request, */
-      /*                       client_chunk_handler); */
+      PRINTF("] lwm2m endpoint '%s': '", endpoint);
+      PRINTS(len, rd_data, "%c");
+      PRINTF("'\n");
       coap_send_request(&rd_request_state, &server_endpoint, request,
                         registration_callback);
       rd_state = REGISTRATION_SENT;
