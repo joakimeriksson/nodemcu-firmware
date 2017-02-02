@@ -39,8 +39,8 @@
 #include <string.h>
 #include <stdio.h>
 #include "oma-lwm2m/lwm2m-engine.h"
+#include "oma-lwm2m/lwm2m-device.h"
 
-void custom_device_object_init(void);
 void ipso_sensor_temp_init(void);
 
 /*------------------------------------------------------------------------*/
@@ -50,6 +50,6 @@ void lwm2m_app_init(void)
   /* Initializing drivers, etc */
   NTIMER_DRIVER.init();
   lwm2m_engine_init();
-  custom_device_object_init();
+  lwm2m_device_init();
   ipso_sensor_temp_init();
 }

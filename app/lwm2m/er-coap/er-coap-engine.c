@@ -44,7 +44,7 @@
 #include <string.h>
 #include "er-coap-engine.h"
 
-#define DEBUG 1
+#define DEBUG 0
 #if DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
@@ -77,20 +77,34 @@ coap_remove_handler(coap_handler_t *handler)
   list_remove(coap_handlers, handler);
 }
 /*---------------------------------------------------------------------------*/
-static CC_INLINE int
-call_service(coap_packet_t *request, coap_packet_t *response,
-             uint8_t *buffer, uint16_t buffer_size, int32_t *offset)
+CC_INLINE int
+er_coap_call_handlers(coap_packet_t *request, coap_packet_t *response,
+                      uint8_t *buffer, uint16_t buffer_size, int32_t *offset)
 {
   coap_handler_t *r;
-
   for(r = list_head(coap_handlers); r != NULL; r = r->next) {
     if(r->handler &&
        r->handler(request, response, buffer, buffer_size, offset)) {
       /* Request handled. */
+
+      /* Check response code before doing observe! */
+      if(request->code == COAP_GET) {
+        coap_observe_handler(NULL, request, response);
+      }
+
       return 1;
     }
   }
-
+  return 0;
+}
+/*---------------------------------------------------------------------------*/
+static CC_INLINE int
+call_service(coap_packet_t *request, coap_packet_t *response,
+             uint8_t *buffer, uint16_t buffer_size, int32_t *offset)
+{
+  if(er_coap_call_handlers(request, response, buffer, buffer_size, offset)) {
+    return 1;
+  }
   if(service_cbk != NULL &&
      service_cbk(request, response, buffer, buffer_size, offset)) {
     return 1;
@@ -129,6 +143,7 @@ coap_receive(const coap_endpoint_t *src,
   if(erbium_status_code == NO_ERROR) {
 
     /*TODO duplicates suppression, if required by application */
+
     PRINTF("  Parsed: v %u, t %u, tkl %u, c %u, mid %u\n", message->version,
            message->type, message->token_len, message->code, message->mid);
     PRINTF("  URL:");

@@ -44,13 +44,13 @@
 #define printf(...) dbg_printf( __VA_ARGS__ )
 #endif
 
+#include "lib/mini-snprintf.h"
 #include <stddef.h> /* for size_t */
 #include "er-coap-constants.h"
 #include "er-coap-conf.h"
 #include "er-coap-transport.h"
 
 #include "rest-engine.h"
-#include "lib/mini-snprintf.h"
 
 #define COAP_MAX_PACKET_SIZE  (COAP_MAX_HEADER_SIZE + REST_MAX_CHUNK_SIZE)
 
@@ -150,7 +150,8 @@ typedef struct {
   }
 #define COAP_SERIALIZE_STRING_OPTION(number, field, splitter, text) \
   if(IS_OPTION(coap_pkt, number)) { \
-    PRINTF(text " [%.*s]\n", (int)coap_pkt->field##_len, coap_pkt->field); \
+    PRINTPRE(text " [", (int)coap_pkt->field##_len, coap_pkt->field);       \
+    PRINTF("]\n");                                                          \
     option += coap_serialize_array_option(number, current_number, option, (uint8_t *)coap_pkt->field, coap_pkt->field##_len, splitter); \
     current_number = number; \
   }
