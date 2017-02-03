@@ -51,12 +51,21 @@
 
 #define NTIMER_CONF_DRIVER ntimer_nodemcu_driver
 
-#define LWM2M_ENGINE_CLIENT_ENDPOINT_NAME "nodemcu-"
-#define LWM2M_DEVICE_MANUFACTURER "SICS, Swedish ICT AB"
+/* For device and endpoint */
+extern char *nodemcu_ep;
+extern char *nodemcu_man;
+extern char *nodemcu_firmware;
+extern char *nodemcu_serialnumber;
+extern char *nodemcu_modelnumber;
+
+#define PLATFORM_HAS_BUTTON 0
+
+#define LWM2M_ENGINE_CLIENT_ENDPOINT_NAME nodemcu_ep
+#define LWM2M_DEVICE_MANUFACTURER nodemcu_man
 #define LWM2M_DEVICE_TYPE "NodeMCU-lwm2m"
-#define LWM2M_DEVICE_MODEL_NUMBER "000"
-#define LWM2M_DEVICE_SERIAL_NO "1"
-#define LWM2M_DEVICE_FIRMWARE_VERSION "0.1"
+#define LWM2M_DEVICE_MODEL_NUMBER nodemcu_modelnumber
+#define LWM2M_DEVICE_SERIAL_NUMBER nodemcu_serialnumber
+#define LWM2M_DEVICE_FIRMWARE_VERSION nodemcu_firmware
 
 #ifdef COAP_TRANSPORT_CONF_H
 #include COAP_TRANSPORT_CONF_H

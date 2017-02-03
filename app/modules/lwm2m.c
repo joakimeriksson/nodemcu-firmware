@@ -16,12 +16,20 @@
 
 static os_timer_t tick_timer;
 long ticks;
+static int init = 0;
+
+extern char *nodemcu_ep;
+extern char *nodemcu_man;
+extern char *nodemcu_serialnumber;
+extern char *nodemcu_modelnumber;
+extern char *nodemcu_firmware;
 
 #define MAX_MESSAGE_SIZE 1200
 
 /* get debug info here */
 #undef NODE_DBG
 #define NODE_DBG dbg_printf
+
 
 /* Needs to be defined here as contiki code use stdint and here c_types */
 int ntimer_run(void);
@@ -34,6 +42,7 @@ int coap_receive(const coap_endpoint_t *src,
                  uint8_t *payload, uint16_t payload_length);
 void lwm2m_rd_client_register_with_server(coap_endpoint_t *server);
 void lwm2m_rd_client_use_registration_server(int use);
+int lwm2m_add_sensor(int obj_id, int instance_id, const char *unit, const char *fn_name);
 
 /* Timer tick for ntimer */
 static void ntimer_tick(void *arg)
@@ -74,6 +83,7 @@ static coap_buf_t coap_aligned_buf;
 static uint16_t coap_buf_len;
 
 static coap_endpoint_t reg_server;
+
 
 void
 coap_transport_init(void)
@@ -188,6 +198,27 @@ static void data_sent(void *arg)
   NODE_DBG("data_sent is called.\n");
 }
 
+/* --- callback from lwm2m engine ---- */
+void
+lwm2m_call_lua_function(const char *lua_fn_name, int32_t *value)
+{
+  double z;
+  lua_State *L = lua_getstate();
+
+  lua_getglobal(L, lua_fn_name);
+  NODE_DBG("Calling %s %x\n", lua_fn_name, L);
+  if (lua_pcall(L, 0, 1, 0) != 0) {
+    NODE_DBG("Error calling %s\n", lua_fn_name);
+    return;
+  }
+  z = lua_tonumber(L, -1);
+  NODE_DBG("Got number: %d\n", z);
+  
+  lua_pop(L, 1);
+  *value = (int32_t) (z * 1000);
+}
+
+
 // Create the LWM2M client object (which is a CoAP server)
 // Lua: s = lwm2m.create(function(conn))
 static int lwm2m_create( lua_State* L, const char* mt )
@@ -269,45 +300,30 @@ static int lwm2m_delete_c( lua_State* L, const char* mt )
   return 0;  
 }
 
-// Lua: server:listen( port, ip )
-static int lwm2m_listen_c( lua_State* L, const char* mt )
+// Lua: client:listen( port, ip )
+static int lwm2m_init(llwm2m_userdata_t *cud)
 {
   struct espconn *pesp_conn = NULL;
-  llwm2m_userdata_t *cud;
   unsigned port;
   size_t il;
   ip_addr_t ipaddr;
 
-  cud = (llwm2m_userdata_t *)luaL_checkudata(L, 1, mt);
-  luaL_argcheck(L, cud, 1, "Server/Client expected");
-  if(cud==NULL){
-    NODE_DBG("userdata is nil.\n");
-    return 0;
+  if (nodemcu_man[0] == 0) {
+    memcpy(nodemcu_man, "Jfokus IoT", strlen("Jfokus IoT"));
   }
 
   pesp_conn = cud->pesp_conn;
-  port = luaL_checkinteger( L, 2 );
+  port = 5683; /* configurable in the future... */
   pesp_conn->proto.udp->local_port = port;
   NODE_DBG("UDP port is set: %d.\n", port);
 
-  if( lua_isstring(L,3) )   // deal with the ip string
-  {
-    const char *ip = luaL_checklstring( L, 3, &il );
-    if (ip == NULL)
-    {
-      ip = "0.0.0.0";
-    }
-    ipaddr.addr = ipaddr_addr(ip);
-    c_memcpy(pesp_conn->proto.udp->local_ip, &ipaddr.addr, 4);
-    NODE_DBG("UDP ip is set: ");
-    NODE_DBG(IPSTR, IP2STR(&ipaddr.addr));
-    NODE_DBG("\n");
-  }
-
-  if(LUA_NOREF==cud->self_ref){
-    lua_pushvalue(L, 1);  // copy to the top of stack
-    cud->self_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  }
+  const char *ip;
+  ip = "0.0.0.0";
+  ipaddr.addr = ipaddr_addr(ip);
+  c_memcpy(pesp_conn->proto.udp->local_ip, &ipaddr.addr, 4);
+  NODE_DBG("UDP ip is set: ");
+  NODE_DBG(IPSTR, IP2STR(&ipaddr.addr));
+  NODE_DBG("\n");
 
   espconn_regist_recvcb(pesp_conn, data_received);
   espconn_regist_sentcb(pesp_conn, data_sent);
@@ -315,7 +331,54 @@ static int lwm2m_listen_c( lua_State* L, const char* mt )
 
   NODE_DBG("LWM2M UDP Server started on port: %d\n", port);
   NODE_DBG("lwm2m_start is called.\n");
-  return 0;  
+  return 0;
+}
+
+static int lwm2m_set_device_info_c( lua_State* L, const char* mt )
+{
+  llwm2m_userdata_t *cud;
+  cud = (llwm2m_userdata_t *)luaL_checkudata(L, 1, mt);
+  luaL_argcheck(L, cud, 1, "Client expected");
+  if(cud==NULL){
+    NODE_DBG("userdata is nil.\n");
+    return 0;
+  }
+
+  if( lua_istable(L, 2) ) {  // deal with the table string
+    lua_pushnil(L);
+    while(lua_next(L, 2) != 0) {
+      lua_pushvalue(L, -2); /* copy key to not break it for loop */
+      const char *key = lua_tostring(L, -1);
+      if(lua_isstring(L, -2)) {
+	char *setval = NULL;
+	const char *val;
+	/* avoid messing with the key when converting to string */
+
+	val = lua_tostring(L, -2);
+	if(strcmp(key, "manufacturer") == 0 || strcmp(key, "0") == 0) {
+	  setval = nodemcu_man;
+	} else if(strcmp(key, "modelnumber") == 0 || strcmp(key, "1") == 0) {
+	  setval = nodemcu_modelnumber;
+	} else if(strcmp(key, "serialnumber") == 0 || strcmp(key, "2") == 0) {
+	  setval = nodemcu_serialnumber;
+	} else if(strcmp(key, "firmwareversion") == 0  ||
+		  strcmp(key, "3") == 0) {
+	  setval = nodemcu_firmware;
+	}
+	if (setval != NULL) {
+	  memcpy(setval, val, strlen(val) + 1);
+	}
+      }
+      else if(lua_isnumber(L, -2)) {
+	/* should also handle numbers... */
+	printf("%s = %d\n", lua_tostring(L, -1), lua_tonumber(L, -2));
+      }
+      /* Pop value and copied key */
+      lua_pop(L, 2);
+    }
+  }
+    
+  return 0;
 }
 
 // Lua: regiester( port, ip )
@@ -327,14 +390,27 @@ static int lwm2m_register_c( lua_State* L, const char* mt )
   size_t il;
   ip_addr_t ipaddr;
 
+
   cud = (llwm2m_userdata_t *)luaL_checkudata(L, 1, mt);
-  luaL_argcheck(L, cud, 1, "Server/Client expected");
+  luaL_argcheck(L, cud, 1, "Client expected");
   if(cud==NULL){
     NODE_DBG("userdata is nil.\n");
     return 0;
   }
 
-  port = luaL_checkinteger( L, 2 );
+  if( lua_isstring(L,2) )   // deal with the ep string
+  {
+    const char *ep = luaL_checklstring( L, 2, &il );
+    if (ep != NULL) {
+      NODE_DBG("LWM2M EP:%s (len:%d)\n", ep, il);
+      memcpy(nodemcu_ep, ep, il);
+      nodemcu_ep[il] = 0; /* null termination */
+    }
+  } else {
+    NODE_DBG("EP not a string.\n");
+  }
+  
+  port = luaL_checkinteger( L, 4 );
   reg_server.port = port;
   NODE_DBG("LWM2M Server UDP port is set: %d.\n", port);
 
@@ -357,12 +433,61 @@ static int lwm2m_register_c( lua_State* L, const char* mt )
     cud->self_ref = luaL_ref(L, LUA_REGISTRYINDEX);
   }
 
+  if(init == 0) {
+    init = 1;
+    lwm2m_init(cud);
+  }
+
   lwm2m_rd_client_use_registration_server(1);
   lwm2m_rd_client_register_with_server(&reg_server);
 
   return 0;  
 }
 
+static int add_sensor(lua_State * L)
+{
+  struct espconn *pesp_conn = NULL;
+  llwm2m_userdata_t *cud;
+  uint16_t oid = 0;
+  uint16_t iid = 0;
+  const char *fn;
+  const char *unit;
+
+  cud = (llwm2m_userdata_t *)luaL_checkudata(L, 1, "lwm2m_client");
+  luaL_argcheck(L, cud, 1, "Client expected");
+  if(cud==NULL){
+    NODE_DBG("userdata is nil.\n");
+    return 0;
+  }
+
+  if(lua_isnumber(L,2)) {
+    oid = lua_tonumber(L, 2);
+  } else {
+    NODE_DBG("Object ID not a number.\n");
+  }
+
+  if(lua_isnumber(L,3)) {
+    iid = lua_tonumber(L, 3);
+  } else {
+    NODE_DBG("Instance ID not a number.\n");
+  }
+
+  if(lua_isstring(L, 4)) {
+    unit = lua_tostring(L, 4);
+  } else {
+    NODE_DBG("Unit is not a string.\n");
+  }
+
+  if(lua_isstring(L, 5)) {
+    fn = lua_tostring(L, 5);
+  } else {
+    NODE_DBG("Function is not a string.\n");
+  }
+
+  lwm2m_add_sensor(oid, iid, unit, fn);
+  return 0;
+  
+}  
 
 // Lua: client:close()
 static int lwm2m_close_c( lua_State* L, const char* mt )
@@ -371,7 +496,7 @@ static int lwm2m_close_c( lua_State* L, const char* mt )
   llwm2m_userdata_t *cud;
 
   cud = (llwm2m_userdata_t *)luaL_checkudata(L, 1, mt);
-  luaL_argcheck(L, cud, 1, "Server/Client expected");
+  luaL_argcheck(L, cud, 1, "Client expected");
   if(cud==NULL){
     NODE_DBG("userdata is nil.\n");
     return 0;
@@ -392,23 +517,20 @@ static int lwm2m_close_c( lua_State* L, const char* mt )
   return 0;  
 }
 
-
-//extern coap_luser_entry *variable_entry;
-//extern coap_luser_entry *function_entry;
-
 // Lua: client:listen( port, ip, function(err) )
-
-static int lwm2m_listen( lua_State* L )
-{
-  const char *mt = "lwm2m_client";
-  return lwm2m_listen_c(L, mt);
-}
 
 static int lwm2m_register( lua_State* L )
 {
   const char *mt = "lwm2m_client";
   return lwm2m_register_c(L, mt);
 }
+
+static int lwm2m_set_device( lua_State* L )
+{
+  const char *mt = "lwm2m_client";
+  return lwm2m_set_device_info_c(L, mt);
+}
+
 
 static int lwm2m_close( lua_State* L )
 {
@@ -432,8 +554,9 @@ static int lwm2m_delete( lua_State* L )
 
 // Module function map
 static const LUA_REG_TYPE lwm2m_obj_map[] = {
-  { LSTRKEY( "listen" ),  LFUNCVAL( lwm2m_listen ) },
   { LSTRKEY( "register" ),  LFUNCVAL( lwm2m_register ) },
+  { LSTRKEY( "set_device_info" ),  LFUNCVAL( lwm2m_set_device ) },
+  { LSTRKEY( "add_sensor" ),  LFUNCVAL( add_sensor ) },
   { LSTRKEY( "close" ),   LFUNCVAL( lwm2m_close ) },
   //  { LSTRKEY( "var" ),     LFUNCVAL( coap_server_var ) },
   // { LSTRKEY( "func" ),    LFUNCVAL( coap_server_func ) },
@@ -451,9 +574,11 @@ static const LUA_REG_TYPE lwm2m_map[] =
 
 static int luaopen_lwm2m( lua_State *L )
 {
-  //  endpoint_setup();
-  luaL_rometatable(L, "lwm2m_client", (void *)lwm2m_obj_map);  // create metatable for lwm2m_client
   lwm2m_app_init();
+
+  NODE_DBG("Endpoint:%s\n", nodemcu_ep, sizeof(nodemcu_ep));
+  
+  luaL_rometatable(L, "lwm2m_client", (void *)lwm2m_obj_map);  // create metatable for lwm2m_client
 
   /* set up a ntimer tick timer that tick each 100 ms */
   os_timer_setfn(&tick_timer, (os_timer_func_t *)ntimer_tick, NULL);

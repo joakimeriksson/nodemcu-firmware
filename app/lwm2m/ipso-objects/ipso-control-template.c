@@ -36,7 +36,8 @@
 
 /**
  * \file
- *         Implementation of OMA LWM2M / IPSO sensor template.
+ *         Implementation of OMA LWM2M / IPSO control template.
+ *         Useful for implementing controllable objects
  * \author
  *         Joakim Eriksson <joakime@sics.se>
  *         Niclas Finne <nfi@sics.se>
@@ -51,6 +52,9 @@
 #define IPSO_DIMMER       5851
 #define IPSO_ON_TIME      5852
 
+static const uint16_t resources[] =
+  {IPSO_ONOFF, IPSO_DIMMER, IPSO_ON_TIME};
+
 /*---------------------------------------------------------------------------*/
 static int
 lwm2m_callback(lwm2m_object_instance_t *object,
@@ -58,24 +62,13 @@ lwm2m_callback(lwm2m_object_instance_t *object,
 {
   /* Here we cast to our sensor-template struct */
   ipso_control_t *control;
-  const uint8_t *inbuf;
-  int inlen;
+  size_t len;
   int32_t v;
-  int rs;
 
   control = (ipso_control_t *) object;
 
-  /* setup input buffer - TODO: should be handled in lwm2m-engine */
-  inlen = REST.get_request_payload(ctx->request, &inbuf);
-
   /* Do the stuff */
-  if(ctx->level == 1) {
-    /* Should not happen 3303 */
-    return 0;
-  }
-  if(ctx->level == 2) {
-    /* This is a get whole object - or write whole object 3303/0 */
-    /* No support right now... need to add support for this later */
+  if(ctx->level < 3) {
     return 0;
   }
   if(ctx->level == 3) {
@@ -84,23 +77,25 @@ lwm2m_callback(lwm2m_object_instance_t *object,
     if(ctx->operation == LWM2M_OP_READ) {
       switch(ctx->resource_id) {
       case IPSO_ONOFF:
-        lwm2m_object_write_int(ctx, control->value > 0);
+        v = control->value > 0;
         break;
       case IPSO_DIMMER:
-        lwm2m_object_write_int(ctx, control->value);
+        v = control->value;
         break;
       case IPSO_ON_TIME:
-        lwm2m_object_write_int(ctx, control->on_time + (ntimer_uptime() - control->last_on_time) / 1000);
+        v = control->on_time +
+          (ntimer_uptime() - control->last_on_time) / 1000;
         break;
       default:
         return 0;
       }
+      lwm2m_object_write_int(ctx, v);
     } else if(ctx->operation == LWM2M_OP_WRITE) {
       switch(ctx->resource_id) {
       case IPSO_ONOFF:
       case IPSO_DIMMER:
-        rs = ctx->reader->read_int(ctx, inbuf, inlen, &v);
-        if(rs == 0) {
+        len = lwm2m_object_read_int(ctx, ctx->inbuf, ctx->insize, &v);
+        if(len == 0) {
           return 0;
         }
         if(v > 100) {
@@ -123,8 +118,8 @@ lwm2m_callback(lwm2m_object_instance_t *object,
         }
         break;
       case IPSO_ON_TIME:
-        rs = ctx->reader->read_int(ctx, inbuf, inlen, &v);
-        if(rs == 0) {
+        len = lwm2m_object_read_int(ctx, ctx->inbuf, ctx->insize, &v);
+        if(len == 0) {
           return 0;
         }
         if(v == 0) {
@@ -146,6 +141,9 @@ ipso_control_add(ipso_control_t *control)
     control->reg_object.instance_id =
       lwm2m_engine_recommend_instance_id(control->reg_object.object_id);
   }
+  control->reg_object.resource_ids = resources;
+  control->reg_object.resource_count = sizeof(resources) / sizeof(uint16_t);
+
   control->reg_object.callback = lwm2m_callback;
   lwm2m_engine_add_object(&control->reg_object);
   return 1;
