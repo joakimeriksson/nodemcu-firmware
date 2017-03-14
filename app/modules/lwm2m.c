@@ -159,8 +159,8 @@ coap_datalen()
 void
 coap_send_message(const coap_endpoint_t *ep, const uint8_t *data, uint16_t len)
 {
-  NODE_DBG("Send message: %d to %d.%d.%d.%d\n", len,
-	   ep->ipaddr[0], ep->ipaddr[1], ep->ipaddr[2], ep->ipaddr[3]);
+  /* NODE_DBG("Send message: %d to %d.%d.%d.%d\n", len, */
+  /* 	   ep->ipaddr[0], ep->ipaddr[1], ep->ipaddr[2], ep->ipaddr[3]); */
   if(conn != NULL) {
     conn->pesp_conn->proto.udp->remote_port = ep->port;
     os_memmove(conn->pesp_conn->proto.udp->remote_ip, ep->ipaddr, 4);
@@ -172,7 +172,7 @@ coap_send_message(const coap_endpoint_t *ep, const uint8_t *data, uint16_t len)
 
 static void data_received(void *arg, char *pdata, unsigned short len)
 {
-  NODE_DBG("data_received is called. %d bytes.\n", len);
+  /* NODE_DBG("data_received is called. %d bytes.\n", len); */
   struct espconn *pesp_conn = arg;
   llwm2m_userdata_t *cud = (llwm2m_userdata_t *)pesp_conn->reverse;
 
@@ -195,7 +195,7 @@ static void data_received(void *arg, char *pdata, unsigned short len)
 
 static void data_sent(void *arg)
 {
-  NODE_DBG("data_sent is called.\n");
+  /* NODE_DBG("data_sent is called.\n"); */
 }
 
 /* --- callback from lwm2m engine ---- */
@@ -308,6 +308,11 @@ static int lwm2m_init(llwm2m_userdata_t *cud)
   size_t il;
   ip_addr_t ipaddr;
 
+  NODE_DBG("Endpoint:%s\n", nodemcu_ep, sizeof(nodemcu_ep));
+  /* set up a ntimer tick timer that tick each 100 ms */
+  os_timer_setfn(&tick_timer, (os_timer_func_t *)ntimer_tick, NULL);
+  os_timer_arm(&tick_timer, 100, 1);
+  
   if (nodemcu_man[0] == 0) {
     memcpy(nodemcu_man, "Jfokus IoT", strlen("Jfokus IoT"));
   }
@@ -574,16 +579,11 @@ static const LUA_REG_TYPE lwm2m_map[] =
 
 static int luaopen_lwm2m( lua_State *L )
 {
-  lwm2m_app_init();
-
-  NODE_DBG("Endpoint:%s\n", nodemcu_ep, sizeof(nodemcu_ep));
   
   luaL_rometatable(L, "lwm2m_client", (void *)lwm2m_obj_map);  // create metatable for lwm2m_client
 
-  /* set up a ntimer tick timer that tick each 100 ms */
-  os_timer_setfn(&tick_timer, (os_timer_func_t *)ntimer_tick, NULL);
-  os_timer_arm(&tick_timer, 100, 1);
-  
+  lwm2m_app_init();
+    
   return 0;
 }
 

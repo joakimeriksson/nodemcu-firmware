@@ -68,6 +68,7 @@ struct sensor_entry {
   ipso_sensor_t sensor;
   ipso_sensor_value_t value; /* has the reg object */
   const char *lua_fn_name;
+  char unit[6];
   struct sensor_entry *next;
 };
 
@@ -86,18 +87,28 @@ get_lua_value(const ipso_sensor_t *s, int32_t *value)
   return LWM2M_STATUS_OK;
 }
 
+#define MIN(a,b) (a < b ? a : b)
+
 /*------------------------------------------------------------------------*/
 int lwm2m_add_sensor(int obj_id, int instance_id, const char *unit,
 		     const char *fn_name)
 {
   struct sensor_entry *head = sensors;
   struct sensor_entry *new_sensor;
+  int i = 0;
+
+  printf("LWM2M: adding sensor:%d/%d %s Unit:%s\n", obj_id, instance_id, fn_name, unit);
+  
   while(head != NULL) {
+    i++;
+    printf("Compare with:%d (%d/%d)\n", i,
+	   head->sensor.object_id, head->sensor.instance_id);
     if(head->sensor.object_id == obj_id &&
        head->sensor.instance_id == instance_id) {
       printf("LWM2M: sensor already registered\n");
       return 0;
     }
+    head = head->next;
   }
   head = sensors;
   new_sensor = (struct sensor_entry *)c_zalloc(sizeof(struct sensor_entry));
@@ -109,11 +120,11 @@ int lwm2m_add_sensor(int obj_id, int instance_id, const char *unit,
   new_sensor->sensor.instance_id = instance_id;
   new_sensor->sensor.sensor_value = &new_sensor->value;
   new_sensor->sensor.get_value_in_millis = get_lua_value;
-  new_sensor->sensor.unit = (char *) unit;
+  new_sensor->sensor.unit = new_sensor->unit;
+  memcpy(new_sensor->unit, unit, MIN(strlen(unit), 5));
   new_sensor->lua_fn_name = fn_name;
   new_sensor->next = NULL;
 
-  printf("LWM2M: adding sensor:%d/%d %s\n", obj_id, instance_id, fn_name);
   
   if(head == NULL) {
     sensors = new_sensor;
@@ -121,9 +132,8 @@ int lwm2m_add_sensor(int obj_id, int instance_id, const char *unit,
     new_sensor->next = sensors;
     sensors = new_sensor->next;
   }
-  
   ipso_sensor_add(&new_sensor->sensor);
-
+  printf("LWM2M: added.\n");
 }
 
 
@@ -149,5 +159,5 @@ void lwm2m_app_init(void)
   lwm2m_engine_init();
   lwm2m_device_init();
   
-  ipso_sensor_temp_init();
+  /*  ipso_sensor_temp_init(); no-built-in-sensors... */
 }

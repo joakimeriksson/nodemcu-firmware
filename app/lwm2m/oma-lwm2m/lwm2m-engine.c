@@ -941,7 +941,6 @@ void lwm2m_notify_object_observers(lwm2m_object_instance_t *obj,
   char path[20]; /* 60000/60000/60000 */
   if(obj != NULL) {
     snprintf(path, 20, "%d/%d/%d", obj->object_id, obj->instance_id, resource);
-    printf("Notify PATH: %s\n", path);
     coap_notify_observers_sub(NULL, path);
   }
 }
